@@ -1,0 +1,340 @@
+{
+  "name": "Voice Assistant (Ashar's Work)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "voice-assistant",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "75316d1e-a895-4803-b2ae-3073f1bbc248",
+      "name": "Voice Interface Endpoint",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        -1104,
+        192
+      ],
+      "webhookId": "71ac230d-5949-41ba-b05e-761cb5cb07f3",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "html": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\" />\n  <title>AI Voice Assistant</title>\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <style>\n    body {\n      background-color: #000;\n      color: white;\n      font-family: 'Segoe UI', sans-serif;\n      display: flex;\n      flex-direction: column;\n      justify-content: center;\n      align-items: center;\n      height: 100vh;\n      margin: 0;\n      overflow: hidden;\n    }\n\n    .orb-container {\n      position: relative;\n    }\n\n    .orb {\n      width: 200px;\n      height: 200px;\n      background: radial-gradient(circle at 30% 30%, #00ffff, #004d4d);\n      border-radius: 50%;\n      box-shadow: 0 0 40px #00ffff88;\n      cursor: pointer;\n      z-index: 2;\n    }\n\n    .ring {\n      position: absolute;\n      top: -20px;\n      left: -20px;\n      width: 240px;\n      height: 240px;\n      border-radius: 50%;\n      box-shadow: 0 0 30px #00ffff55;\n      animation: pulse 2s infinite;\n      pointer-events: none;\n    }\n\n    .orb.listening {\n      background: radial-gradient(circle at 30% 30%, #00ffcc, #005c5c);\n      box-shadow: 0 0 50px #00ffff;\n    }\n\n    .orb.playing {\n      background: radial-gradient(circle at 30% 30%, #ff00ff, #520052);\n      box-shadow: 0 0 50px #ff00ff99;\n    }\n\n    .ring.listening {\n      animation: vibrate 0.4s infinite;\n    }\n\n    .ring.playing {\n      animation: glow 1s ease-in-out infinite alternate;\n    }\n\n    @keyframes pulse {\n      0%, 100% { transform: scale(1); opacity: 0.6; }\n      50% { transform: scale(1.2); opacity: 1; }\n    }\n\n    @keyframes vibrate {\n      0% { transform: scale(1.05); }\n      50% { transform: scale(1.15); }\n      100% { transform: scale(1.05); }\n    }\n\n    @keyframes glow {\n      0% { box-shadow: 0 0 40px #ff00ff88; }\n      100% { box-shadow: 0 0 60px #ff00ffcc; }\n    }\n\n    .status-text {\n      margin-top: 20px;\n      font-size: 18px;\n      color: #aaa;\n      font-style: italic;\n    }\n  </style>\n</head>\n\n<body>\n  <div class=\"orb-container\">\n    <div id=\"ring\" class=\"ring\"></div>\n    <div id=\"orb\" class=\"orb\" title=\"Click to speak\"></div>\n  </div>\n  <div id=\"status\" class=\"status-text\">Click to speak</div>\n\n  <script>\n    const orb = document.getElementById(\"orb\");\n    const ring = document.getElementById(\"ring\");\n    const statusText = document.getElementById(\"status\");\n\n    let recognition = null;\n    let lastTranscript = \"\";\n    let silenceTimeout = null;\n    let isListening = false;\n\n    async function startRecognition() {\n      if (!(\"webkitSpeechRecognition\" in window)) {\n        alert(\"Speech recognition not supported in this browser.\");\n        return;\n      }\n\n      // Force mic permission\n      try {\n        await navigator.mediaDevices.getUserMedia({ audio: true });\n      } catch {\n        statusText.textContent = \"Microphone permission denied\";\n        return;\n      }\n\n      recognition = new webkitSpeechRecognition();\n      recognition.lang = \"en-US\";\n      recognition.interimResults = true;\n      recognition.continuous = true;\n      lastTranscript = \"\";\n\n      recognition.onstart = () => {\n        isListening = true;\n        orb.classList.add(\"listening\");\n        ring.classList.add(\"listening\");\n        statusText.textContent = \"Listening...\";\n      };\n\n      recognition.onresult = (event) => {\n        for (let i = event.resultIndex; i < event.results.length; i++) {\n          if (event.results[i].isFinal) {\n            lastTranscript += event.results[i][0].transcript + \" \";\n          }\n        }\n\n        clearTimeout(silenceTimeout);\n        silenceTimeout = setTimeout(stopRecognition, 1200);\n      };\n\n      recognition.onerror = (e) => {\n        console.error(\"Speech error:\", e.error);\n        stopRecognition();\n      };\n\n      recognition.onend = () => {\n        isListening = false;\n        orb.classList.remove(\"listening\");\n        ring.classList.remove(\"listening\");\n      };\n\n      recognition.start();\n    }\n\n    async function stopRecognition() {\n      if (!recognition) return;\n\n      recognition.stop();\n      isListening = false;\n\n      orb.classList.remove(\"listening\");\n      ring.classList.remove(\"listening\");\n\n      if (!lastTranscript.trim()) {\n        statusText.textContent = \"Click to speak\";\n        return;\n      }\n\n      statusText.textContent = \"Processing...\";\n\n      try {\n        const response = await fetch(\n          \"https://algrithmn8n.duckdns.org/webhook/process-audio\",\n          {\n            method: \"POST\",\n            headers: { \"Content-Type\": \"application/json\" },\n            body: JSON.stringify({ question: lastTranscript.trim() })\n          }\n        );\n\n        if (!response.ok) throw new Error(\"Bad response\");\n\n        const blob = await response.blob();\n        const audio = new Audio(URL.createObjectURL(blob));\n\n        audio.onplay = () => {\n          orb.classList.add(\"playing\");\n          ring.classList.add(\"playing\");\n          statusText.textContent = \"Responding...\";\n        };\n\n        audio.onended = () => {\n          orb.classList.remove(\"playing\");\n          ring.classList.remove(\"playing\");\n          statusText.textContent = \"Click to speak\";\n        };\n\n        audio.play();\n\n      } catch (err) {\n        console.error(err);\n        statusText.textContent = \"Error communicating with AI\";\n      }\n    }\n\n    orb.addEventListener(\"click\", () => {\n      if (isListening) {\n        stopRecognition();\n      } else {\n        startRecognition();\n      }\n    });\n  </script>\n</body>\n</html>\n"
+      },
+      "id": "80106900-c302-495e-8b41-cae01d1fc808",
+      "name": "Voice Assistant UI",
+      "type": "n8n-nodes-base.html",
+      "position": [
+        -864,
+        192
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Permissions-Policy",
+                "value": "microphone=(self)"
+              }
+            ]
+          }
+        }
+      },
+      "id": "4ce9072e-52a6-4a60-a2ca-3a6a9b16b7b7",
+      "name": "Send HTML Interface",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        -640,
+        192
+      ],
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "process-audio",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "d743cbb8-067b-4b4e-a8d1-b8ae01ad51a0",
+      "name": "Audio Processing Endpoint",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        -1104,
+        560
+      ],
+      "webhookId": "287d40b1-4172-4ba0-9a1d-6d971dd9cf68",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.question }}",
+        "options": {
+          "systemMessage": "You are a helpful AI assistant. Respond in a friendly and conversational manner."
+        }
+      },
+      "id": "25c1178b-102e-4519-b7fb-bd04dfcf0ca0",
+      "name": "Process User Query",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        -880,
+        560
+      ],
+      "typeVersion": 1.8
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "voice-assistant-session",
+        "contextWindowLength": 30
+      },
+      "id": "beee4f62-4817-4501-b5a1-cf7774212028",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "position": [
+        -752,
+        784
+      ],
+      "typeVersion": 1.3
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "options": {}
+      },
+      "id": "cd6c7488-e5e1-43b1-9621-47e294a6a986",
+      "name": "Send Audio Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        -304,
+        560
+      ],
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "input": "={{ $json.output }}",
+        "voice": "onyx",
+        "options": {}
+      },
+      "id": "3e1164e0-28d7-4ac9-98be-f6357a073b3c",
+      "name": "Generate Voice Response",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "position": [
+        -528,
+        560
+      ],
+      "typeVersion": 1.8,
+      "credentials": {
+        "openAiApi": {
+          "id": "2T6SGL4znCmfER9g",
+          "name": "OpenAi account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## VOICE ASSISTANT INTERFACE\n\nThis webhook serves the HTML interface with the interactive orb that users click to speak with the AI assistant.\n\nAccess this webhook URL in your browser to use the voice assistant.",
+        "height": 420,
+        "width": 840,
+        "color": 5
+      },
+      "id": "fa8f3a13-b649-4840-a3f6-1b105d7786dc",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1248,
+        -80
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## BACKEND PROCESSING\n\nThis section handles:\n1. Receiving transcribed speech from the frontend\n2. Processing through AI with conversation memory\n3. Converting response to speech\n4. Sending audio back to the browser",
+        "height": 580,
+        "width": 1100,
+        "color": 3
+      },
+      "id": "a36d408e-cb2f-42e6-9aa2-450ea7bfe855",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1200,
+        352
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## Voice Assistant Interface with n8n and OpenAI\n\nThis workflow creates a voice-activated AI assistant interface that runs directly in your browser. Users can click on a glowing orb to speak with the AI, which responds with voice using OpenAI's text-to-speech capabilities.\n\n## Who is it for?\n\nThis template is perfect for:\n- Developers looking to add voice interfaces to their applications\n- Customer service teams wanting to create voice-enabled support systems\n- Content creators building interactive voice experiences\n- Anyone interested in creating their own \"Alexa-like\" assistant\n\n## How it works\n\nThe workflow consists of two main parts:\n\n1. **Frontend Interface**: A beautiful animated orb that users click to activate voice recording\n2. **Backend Processing**: Receives the audio transcription, processes it through an AI agent with memory, and returns voice responses\n\nThe system uses:\n- Web Speech API for voice recognition (browser-based)\n- OpenAI GPT-4o-mini for intelligent responses\n- OpenAI Text-to-Speech for voice synthesis\n- Session memory to maintain conversation context\n\n## Setup requirements\n\n- n8n instance (self-hosted or cloud)\n- OpenAI API key with access to:\n  - GPT-4o-mini model\n  - Text-to-Speech API\n- Modern web browser with Web Speech API support (Chrome, Edge, Safari)\n\n## How to set up\n\n1. Import the workflow into your n8n instance\n2. Add your OpenAI credentials to both OpenAI nodes\n3. Copy the webhook URL from the \"Audio Processing Endpoint\" node\n4. Edit the \"Voice Assistant UI\" node and replace `YOUR_WEBHOOK_URL_HERE` with your webhook URL\n5. Access the \"Voice Interface Endpoint\" webhook URL in your browser\n6. Click the orb and start talking!\n\n## How to customize the workflow\n\n- **Change the AI personality**: Edit the system message in the \"Process User Query\" node\n- **Modify the visual style**: Customize the CSS in the \"Voice Assistant UI\" node\n- **Add more capabilities**: Connect additional tools to the AI Agent\n- **Change the voice**: Select a different voice in the \"Generate Voice Response\" node\n- **Adjust memory**: Modify the context window length in the \"Conversation Memory\" node\n\n## Demo\n\nWatch the template in action: https://youtu.be/0bMdJcRMnZY",
+        "height": 1460,
+        "width": 600,
+        "color": 6
+      },
+      "id": "fbe9cae1-331f-43d4-970e-d75dc6762400",
+      "name": "Template Description",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1888,
+        112
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ SETUP INSTRUCTIONS\n\n1. **Add OpenAI Credentials**:\n   - Click on \"GPT-4o-mini Model\" node\n   - Add your OpenAI API credentials\n   - Do the same for \"Generate Voice Response\" node\n\n2. **Configure Webhook URL**:\n   - Copy the webhook URL from \"Audio Processing Endpoint\"\n   - Edit \"Voice Assistant UI\" node\n   - Replace YOUR_WEBHOOK_URL_HERE with the copied URL\n\n3. **Test the Assistant**:\n   - Open the \"Voice Interface Endpoint\" webhook URL in your browser\n   - Click the glowing orb\n   - Allow microphone permissions\n   - Start speaking!",
+        "height": 500,
+        "width": 400,
+        "color": 7
+      },
+      "id": "d6e56070-eec3-45bd-867f-a5320078a43b",
+      "name": "Setup Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        16,
+        0
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## 🎨 CUSTOMIZATION OPTIONS\n\n**Language Support**:\n- Change `recognition.lang = 'en-US'` in the HTML\n- Options: 'pt-BR', 'es-ES', 'fr-FR', etc.\n\n**Voice Options**:\n- alloy: Neutral and balanced\n- echo: Warm and conversational\n- fable: Expressive and dynamic\n- onyx: Deep and authoritative\n- nova: Friendly and upbeat\n- shimmer: Soft and gentle\n\n**Visual Themes**:\n- Modify CSS colors for different moods\n- Adjust animation speeds\n- Change orb size and effects",
+        "height": 440,
+        "width": 400,
+        "color": 7
+      },
+      "id": "d0b928ee-d280-43d6-b74f-743f33df84c0",
+      "name": "Customization Options",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        0,
+        608
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "id": "7695099e-abb8-4ce1-a314-4350765dda32",
+      "name": "GPT-4o-mini Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "position": [
+        -960,
+        784
+      ],
+      "typeVersion": 1.2,
+      "credentials": {
+        "openAiApi": {
+          "id": "2T6SGL4znCmfER9g",
+          "name": "OpenAi account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "GPT-4o-mini Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Process User Query",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process User Query": {
+      "main": [
+        [
+          {
+            "node": "Generate Voice Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Voice Assistant UI": {
+      "main": [
+        [
+          {
+            "node": "Send HTML Interface",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Process User Query",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Voice Response": {
+      "main": [
+        [
+          {
+            "node": "Send Audio Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Voice Interface Endpoint": {
+      "main": [
+        [
+          {
+            "node": "Voice Assistant UI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audio Processing Endpoint": {
+      "main": [
+        [
+          {
+            "node": "Process User Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "82041202-0ef4-4b48-addf-24fb887cb366",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e975599e4ad4ec7d2d8c4123eae54f3b426a4bcf62237d5cc8adeed31cf80d92"
+  },
+  "id": "XsDkfQzHJV37LwMU4d5cT",
+  "tags": []
+}
