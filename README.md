@@ -1,4 +1,4 @@
-# 🎙️ AI Voice Assistant — Ashar's Work
+# 🎙️ AI Voice Assistant
 
 A full-stack AI voice assistant powered by **n8n**, **OpenAI GPT-4o-mini**, and **OpenAI Text-to-Speech**. Speak to it, and it speaks back.
 
