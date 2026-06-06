@@ -37,7 +37,7 @@ User speaks → Browser captures audio via Web Speech API
 ## 📁 Repository Structure
 
 ```
-voice-assistant-ashar/
+voice-assistant/
 ├── workflow/
 │   └── workflow.json          # n8n workflow (import this into n8n)
 ├── frontend/
